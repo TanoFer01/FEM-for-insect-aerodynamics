@@ -154,6 +154,7 @@ def compute_torque_on_wing(u_h, p_h, mesh, mt, wing_tag, gdim, Re_inv, M_t, x0):
 # MAIN
 # =====================================================================
 def main():
+    #Set true to run the test case, or False to run the normal simulation
     test = True
     if test == True:
         config_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "config_test.json")
