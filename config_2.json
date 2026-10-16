@@ -1,6 +1,6 @@
 {
   "geometry": {
-    "L": 6.0,
+    "L": 6,
     "r_x": 0.5,
     "r_y": 0.02,
     "N2": 100,
@@ -11,7 +11,7 @@
   },
   "time": {
     "T": 0.75,
-    "t_start": 0.02,
+    "t_start": 0,
     "dt_val_cost": 0.07
   },
   "trajectory": {
@@ -33,10 +33,25 @@
   "output": {
     "base_dir": "runs",
     "save_times": [
-      1.0,
-      2.0,
-      3.0,
-      4.0
-    ]
+      1,
+      2,
+      3,
+      4
+    ],
+    "write_fields": true,
+    "write_every": 1
+  },
+  "refinement": {
+    "enabled": true,
+    "every": 5,
+    "theta": 0.5,
+    "h_min": null,
+    "max_levels": 3,
+    "max_cells": 200000
+  },
+  "solver": {
+    "type": "lu",
+    "ksp_rtol": 0.000001,
+    "pin_pressure": true
   }
 }

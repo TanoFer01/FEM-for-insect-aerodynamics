@@ -1,0 +1,37 @@
+{
+  "geometry": {
+    "L": 4.0,
+    "r_x": 0.5,
+    "r_y": 0.02,
+    "N2": 100,
+    "resolution": 0.01
+  },
+  "flow": {
+    "Re": 100
+  },
+  "time": {
+    "T": 0.08,
+    "t_start": 0.0,
+    "dt_val_cost": 0.05
+  },
+  "trajectory": {
+    "alpha_deg": 50,
+    "amp_phi_deg": 20,
+    "period_phi": 0.5,
+    "period_alpha": 0.5,
+    "phase_alpha": 0.69,
+    "sigma_phi": 0.01,
+    "sigma_alpha": 0.02,
+    "n_grid": 4096,
+    "num_steps": 80
+  },
+  "flags": {
+    "flag_plot": false,
+    "flag_plot_q": false,
+    "start_from_previous": false
+  },
+  "output": {
+    "base_dir": "runs",
+    "save_times": [1.0, 2.0, 3.0, 4.0]
+  }
+}
