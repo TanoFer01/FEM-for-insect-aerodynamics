@@ -40,6 +40,45 @@ def custom_sin(T, num_steps):
 
 from scipy.interpolate import CubicSpline
 
+def custom_test(omega, v_p, y0, theta0, phi, lamb, T):
+    theta0 = np.deg2rad(theta0)
+    phi = np.deg2rad(phi)
+
+    f1_t = lambda t: np.array([v_p*(1-np.exp(-lamb*t)), -y0*omega*np.sin(omega*t)])
+    f2_t = lambda t: -theta0*np.sin(omega*t + phi*(1-np.exp(-lamb*t)))*(omega + lamb*phi*np.exp(-lamb*t))
+    f3_t = lambda t: np.array([v_p*lamb*np.exp(-lamb*t), 0]) #-y0*omega*omega*np.cos(omega*t)
+
+    # f1_t = lambda t: np.array([v_p*(1-np.exp(-lamb*t)), 0])
+    # f2_t = lambda t: #-theta0*np.sin(omega*t + phi*(1-np.exp(-lamb*t)))*(omega + lamb*phi*np.exp(-lamb*t))
+    # f3_t = lambda t: np.array([v_p*lamb*np.exp(-lamb*t), 0])
+
+
+    x = np.linspace(0, T, 1000)
+
+    fig, ax1 = plt.subplots(1, 1, figsize=(9, 7))
+
+    # Left axis: f1 and f3
+    ax1.plot(x, [f1_t(t)[0] for t in x], label="f1", color="tab:blue")
+    ax1.plot(x, [f1_t(t)[1] for t in x], label="f1", color="tab:blue")
+    ax1.set_xlabel("t")
+    ax1.set_ylabel("f1, f3", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+    # Right axis: f2
+    ax2 = ax1.twinx()
+    ax2.plot(x, [f2_t(t) for t in x], label="f2", color="tab:red")
+    ax2.set_ylabel("f2", color="tab:red")
+    ax2.tick_params(axis="y", labelcolor="tab:red")
+
+    # Combined legend
+    lines = ax1.get_lines() + ax2.get_lines()
+    labels = [line.get_label() for line in lines]
+    ax1.legend(lines, labels, loc="best")
+
+    plt.tight_layout()
+    plt.show()
+    return f1_t, f2_t, f3_t
+
 def custom_di(T, num_steps, num_steps_=1000,  period_phi=0.5, amp_phi=np.pi*40/180,
               period_alpha=0.5, amp_alpha=np.pi*40/180,
               sigma_phi=0.02, sigma_alpha=0.02, phase_alpha=0.72, n_grid=4096):
