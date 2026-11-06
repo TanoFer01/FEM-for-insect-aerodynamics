@@ -54,8 +54,8 @@ P = dict(
     phi0=0.0,         # phi iniziale [deg]
     alpha=-50.0,      # ampiezza angolo ala-velocita' [deg]
     speed=1.0,        # moltiplicatore del tempo
-    CD=0.3,           # coefficiente di resistenza
-    CL=1.0,           # coefficiente di portanza
+    CD=0,           # coefficiente di resistenza
+    CL=0,           # coefficiente di portanza
 )
 VEL_SCALE = 0.3   # lunghezza 3D della freccia velocita' per |v| = 1
 F_SCALE = 0.1     # lunghezza 3D della freccia forza per |F| = 1
@@ -130,7 +130,7 @@ ax = fig.add_axes([0.0, 0.25, 0.54, 0.73], projection="3d")
 ax.set_xlim(-1.2, 1.2); ax.set_ylim(-1.2, 1.2); ax.set_zlim(-1.2, 1.2)
 ax.set_box_aspect((1, 1, 1))
 ax.set_xlabel("x"); ax.set_ylabel("y"); ax.set_zlabel("z")
-ax.set_title("Ala su traiettoria (beta, phi, theta, alpha)")
+#ax.set_title("Ala su traiettoria (beta, phi, theta, alpha)")
 ax.view_init(elev=25, azim=-60)
 
 # sfera di raggio 1 (flag SHOW_SPHERE); invariante per rotazione, quindi uguale in S e S'
@@ -169,7 +169,7 @@ info = ax.text2D(0.02, 0.95, "", transform=ax.transAxes, family="monospace")
 ax.plot([], [], color="k", lw=2, label="asse ala r")
 ax.plot([], [], color="red", lw=2, label="velocita' v")
 ax.plot([], [], color="green", lw=2, label="corda")
-ax.plot([], [], color="magenta", lw=2, label="F = -CD|v|^2 u_v + CL|v|^2 u_z")
+#ax.plot([], [], color="magenta", lw=2, label="F = -CD|v|^2 u_v + CL|v|^2 u_z")
 ax.legend(loc="upper right")
 
 # --- 2) theta(t), phi(t), alpha(t) ---------------------------------------
@@ -202,12 +202,12 @@ pt_traj, = ax_pt.plot([], [], color="tab:purple", lw=1.2, alpha=0.8)
 pt_chord, = ax_pt.plot([], [], color="green", lw=3, label="corda")
 pt_pos, = ax_pt.plot([], [], "ko", ms=5)
 ax_pt.plot([], [], color="red", lw=2, label="v (ampiezza ~ |v|)")
-ax_pt.plot([], [], color="magenta", lw=2, label="F")
+#ax_pt.plot([], [], color="magenta", lw=2, label="F")
 _arrow = dict(arrowstyle="->", lw=2, shrinkA=0, shrinkB=0)
 ann_v = ax_pt.annotate("", xy=(0, 0), xytext=(0, 0), annotation_clip=False,
                        arrowprops=dict(color="red", **_arrow))
-ann_f = ax_pt.annotate("", xy=(0, 0), xytext=(0, 0), annotation_clip=False,
-                       arrowprops=dict(color="magenta", **_arrow))
+# ann_f = ax_pt.annotate("", xy=(0, 0), xytext=(0, 0), annotation_clip=False,
+#                        arrowprops=dict(color="magenta", **_arrow))
 alpha_txt = ax_pt.text(0.02, 0.9, "", transform=ax_pt.transAxes, family="monospace", fontsize=9)
 ax_pt.legend(loc="upper right", fontsize=7)
 
@@ -261,8 +261,8 @@ def draw(t):
     trail_line.set_data_3d(tr[:, 0], tr[:, 1], tr[:, 2])
     tip_pt.set_data_3d([tip[0]], [tip[1]], [tip[2]])
     th_now, ph_now, al_now = theta_fn(t), phi_fn(t), alpha_fn(t)
-    info.set_text(f"t={t:6.2f}s  theta={th_now:6.1f}  phi={ph_now:6.1f}  "
-                  f"beta={P['beta']:.0f}  alpha={al_now:6.1f}  |v|={speed:5.2f}")
+    # info.set_text(f"t={t:6.2f}s  theta={th_now:6.1f}  phi={ph_now:6.1f}  "
+    #               f"beta={P['beta']:.0f}  alpha={al_now:6.1f}  |v|={speed:5.2f}")
 
     # --- finestra temporale (passato)
     tt = np.linspace(t - T_WIN, t, 400)
@@ -291,14 +291,14 @@ def draw(t):
         d0 = tr_.transform(P0)
         T = tr_.transform(P0 + tv) - d0
         T = T / np.linalg.norm(T)                   # tangente (pixel)
-        N = np.array([T[1], -T[0]])                 # ruotato di -90 deg (verso di r x v)
+        N = np.array([T[1], -T[0]])                 # ruotato di -90 deg (verso di r x v) #@G HO CAMBIATO IL SEGNO DI TUTTO IL VETTORE
         a = np.radians(-al_now)
         chord_dir = np.cos(a) * T + np.sin(a) * N   # angolo alpha esatto con la tangente
         inv = tr_.inverted()
         p_a = inv.transform(d0 - SEG_PX * chord_dir)
         p_b = inv.transform(d0 + SEG_PX * chord_dir)
         v_end = inv.transform(d0 + VPX * speed * T)
-        F_end = inv.transform(d0 + FPX * speed ** 2 * (-P["CD"] * T + P["CL"] * sgn * N))
+        F_end = inv.transform(d0 + FPX * speed ** 2 * (-P["CD"] * T - P["CL"] * sgn * N))
     else:
         h_ = np.degrees(W / 2)
         p_a = P0 - sph_proj(0.5 * W * c_p, th_now, ph_now) * 1.0
@@ -309,8 +309,8 @@ def draw(t):
     pt_chord.set_data([p_a[0], p_b[0]], [p_a[1], p_b[1]])
     pt_pos.set_data([ph_now], [th_now])
     ann_v.xy = tuple(v_end); ann_v.set_position(tuple(P0))
-    ann_f.xy = tuple(F_end); ann_f.set_position(tuple(P0))
-    alpha_txt.set_text(f"alpha = {al_now:6.1f} deg\n|v| = {speed:5.2f}")
+    #ann_f.xy = tuple(F_end); ann_f.set_position(tuple(P0))
+    #alpha_txt.set_text(f"alpha = {al_now:6.1f} deg\n|v| = {speed:5.2f}")
 
 
 def step(_):
@@ -337,14 +337,14 @@ azim_slider.on_changed(update_view)
 
 specs = [
     ("beta", "beta [deg]", -90, 90),
-    ("alpha", "alpha [deg]", -90, 90),
-    ("dtheta", "ampiezza theta", 0, 85),
-    ("omega_phi", "omega phi [deg]", -180, 180),
+    ("alpha", "A_alpha [deg]", -90, 90),
+    ("dtheta", "A_theta ", 0, 85),
+    ("omega_phi", "A_phi [deg]", -180, 180),
     ("f_theta", "f theta [Hz]", 0, 2),
-    ("dt", "ritardo [s]", 0, 0.5),
+    #("dt", "ritardo [s]", 0, 0.5),
     ("speed", "velocita'", 0.1, 3),
-    ("CD", "C_D", 0, 2),
-    ("CL", "C_L", 0, 2),
+    #("CD", "C_D", 0, 2),
+    #("CL", "C_L", 0, 2),
 ]
 sliders = []
 for i, (key, label, lo, hi) in enumerate(specs):

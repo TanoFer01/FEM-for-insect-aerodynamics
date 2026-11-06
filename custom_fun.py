@@ -39,41 +39,48 @@ def custom_sin(T, num_steps):
     return f1_t, f2_t, f3_t, x
 
 from scipy.interpolate import CubicSpline
-
-def custom_test(omega, v_p, y0, theta0, phi, lamb, T):
-    theta0 = np.deg2rad(theta0)
-    phi = np.deg2rad(phi)
+ 
+def custom_test(omega, v_p, y0, alpha0, phi, lamb, T):   #omega : frequence, v_p : velocity along x, y0 : amplitude along y, theta0 : amplitude of alpha, phi : phase, lamb : decay rate of the vx velocity, T : total time
 
     f1_t = lambda t: np.array([v_p*(1-np.exp(-lamb*t)), -y0*omega*np.sin(omega*t)])
-    f2_t = lambda t: -theta0*np.sin(omega*t + phi*(1-np.exp(-lamb*t)))*(omega + lamb*phi*np.exp(-lamb*t))
+    f2_t = lambda t: -alpha0*np.sin(omega*t + phi*(1-np.exp(-lamb*t)))*(omega + lamb*phi*np.exp(-lamb*t))
     f3_t = lambda t: np.array([v_p*lamb*np.exp(-lamb*t), 0]) #-y0*omega*omega*np.cos(omega*t)
 
-    # f1_t = lambda t: np.array([v_p*(1-np.exp(-lamb*t)), 0])
-    # f2_t = lambda t: #-theta0*np.sin(omega*t + phi*(1-np.exp(-lamb*t)))*(omega + lamb*phi*np.exp(-lamb*t))
-    # f3_t = lambda t: np.array([v_p*lamb*np.exp(-lamb*t), 0])
-
-
     x = np.linspace(0, T, 1000)
+    y = cumulative_trapezoid([f1_t(x_)[1] for x_ in x], x, initial=0)
+    theta = cumulative_trapezoid([f2_t(x_) for x_ in x], x, initial=0) + alpha0 #add alpha0 t0 the final vector
+    alpha_ = np.array([np.arctan2(f1_t(x_)[1],f1_t(x_)[0]) for x_ in x])
+    alpha = theta - alpha_
 
-    fig, ax1 = plt.subplots(1, 1, figsize=(9, 7))
+    fig, (ax1, ax3) = plt.subplots(2, 1, figsize=(9, 10))
 
-    # Left axis: f1 and f3
-    ax1.plot(x, [f1_t(t)[0] for t in x], label="f1", color="tab:blue")
-    ax1.plot(x, [f1_t(t)[1] for t in x], label="f1", color="tab:blue")
+    # --- First plot: f1 and f2 ---
+    ax1.plot(x, [f1_t(t)[0] for t in x],
+            label="v_x", color="tab:blue")
+
+    ax1.plot(x, [f1_t(t)[1] for t in x],
+            label="v_y", color="tab:cyan")
+
+    ax1.plot(x, y,
+                label="y", color="tab:cyan")
+
     ax1.set_xlabel("t")
-    ax1.set_ylabel("f1, f3", color="tab:blue")
-    ax1.tick_params(axis="y", labelcolor="tab:blue")
+    ax1.set_ylabel("f1 components", color="tab:blue")
 
-    # Right axis: f2
-    ax2 = ax1.twinx()
-    ax2.plot(x, [f2_t(t) for t in x], label="f2", color="tab:red")
-    ax2.set_ylabel("f2", color="tab:red")
-    ax2.tick_params(axis="y", labelcolor="tab:red")
-
-    # Combined legend
-    lines = ax1.get_lines() + ax2.get_lines()
+    lines = ax1.get_lines() 
     labels = [line.get_label() for line in lines]
     ax1.legend(lines, labels, loc="best")
+    ax1.set_title("Functions")
+
+    # --- Second plot: angles ---
+    ax3.plot(x, np.rad2deg(theta), label=r"$\theta$", color="tab:blue")
+    ax3.plot(x, np.rad2deg(alpha), label=r"$\alpha$", color="tab:green")
+
+    ax3.set_xlabel("t")
+    ax3.set_ylabel("Angle [rad]")
+    ax3.set_title("Angles")
+    ax3.legend(loc="best")
+    ax3.grid(True)
 
     plt.tight_layout()
     plt.show()

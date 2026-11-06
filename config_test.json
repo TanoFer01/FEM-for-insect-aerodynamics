@@ -1,12 +1,12 @@
 {
-    "geometry": {"L": 10.0, "H": 5.0, "a": 0.5, "chord": 1.0, "alpha": 3.1415, "N2": 200,
-                 "c_r": [0.0, 0.0], "size_far": 0.3, "dist_max": 1.5,
+    "geometry": {"L": 3.0, "H": 5.0, "a": 0.5, "chord": 1.0, "alpha": 3.1415, "N2": 100,
+                 "c_r": [0.0, 0.0], "sizes": [0.001, 0.05, 0.3], "dists": [0.5, 1.5],
                  "resolution": 0.001, "mesh_file": "wing.msh"},
     "flow": {"Re": 10000},
-    "time": {"T": 3, "t_start": 0.0, "dt_val_cost": 0.05},
+    "time": {"T": 0.5, "t_start": 0.0, "dt_val_cost": 0.025},
     "trajectory": {
-        "phi": 40, "y0": 0.1,
-        "theta0": 5, "lamb": 10, "freq":1
+        "phi": 90, "y0": 0.3,
+        "alpha0": 20, "lamb": 2, "St" : 0.2
     },
     "flags": {"flag_plot": true, "flag_plot_q": false, "start_from_previous": false},
     "output": {"base_dir": "runs", "save_times": [1.0, 2.0, 3.0, 4.0]}

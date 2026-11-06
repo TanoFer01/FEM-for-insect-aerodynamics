@@ -2,6 +2,9 @@ import pygmsh
 import gmsh
 import meshio
 import numpy as np
+import pyvista as pv
+from dolfinx import plot
+
 
 
 
@@ -293,7 +296,6 @@ def generate_mesh_circular(R, r_x, r_y, N, N2, alpha, c_r, resolution):
     )
 
 
-
 def naca00xx_half_thickness(x, t=0.12):
     """Semispessore del NACA 00xx (x in [0,1], corda unitaria, bordo di fuga chiuso)."""
     return 5 * t * (0.2969 * np.sqrt(x)
@@ -304,8 +306,7 @@ def naca00xx_half_thickness(x, t=0.12):
 
 
 def generate_mesh_naca(L, H, a, chord=1.0, alpha=0.0, c_r=(0.0, 0.0),
-                       t=0.12, n_pts=80,
-                       size_wall=0.01, size_far=0.3, dist_max=None,
+                       t=0.12, n_pts=80, sizes=0.3, dists = None,
                        mesh_file="wing.msh"):
     """
     Mesh 2D rettangolare con profilo NACA0012.
@@ -323,8 +324,8 @@ def generate_mesh_naca(L, H, a, chord=1.0, alpha=0.0, c_r=(0.0, 0.0),
     dist_max  : distanza dal profilo a cui la mesh raggiunge size_far
     """
     assert 0 < a < 1, "a deve essere compreso tra 0 e 1"
-    if dist_max is None:
-        dist_max = min(H / 2, (1 - a) * L, a * L)
+    if dists is None:
+        dists = [min(H / 2, (1 - a) * L, a * L)]
 
     def rotate(x, y):
         """Ruota (x,y) di alpha attorno a c_r."""
@@ -357,16 +358,16 @@ def generate_mesh_naca(L, H, a, chord=1.0, alpha=0.0, c_r=(0.0, 0.0),
 
         # --- bordo esterno ---
         corners = [(x_min, y_min), (x_max, y_min), (x_max, y_max), (x_min, y_max)]
-        p_out = [model.add_point((x, y, 0.0), mesh_size=size_far) for x, y in corners]
+        p_out = [model.add_point((x, y, 0.0), mesh_size=sizes[-1]) for x, y in corners]
         lines_out = [model.add_line(p_out[i], p_out[(i + 1) % 4]) for i in range(4)]
 
         # --- profilo ---
-        p_le = model.add_point(rotate(x_phys[0], c_r[1]), mesh_size=size_wall)
-        p_te = model.add_point(rotate(x_phys[-1], c_r[1]), mesh_size=size_wall)
+        p_le = model.add_point(rotate(x_phys[0], c_r[1]), mesh_size=sizes[0])
+        p_te = model.add_point(rotate(x_phys[-1], c_r[1]), mesh_size=sizes[0])
 
-        p_upper = [model.add_point(rotate(x_phys[i], y_up[i]), mesh_size=size_wall)
+        p_upper = [model.add_point(rotate(x_phys[i], y_up[i]), mesh_size=sizes[1])
                    for i in range(1, n_pts - 1)]
-        p_lower = [model.add_point(rotate(x_phys[i], y_lo[i]), mesh_size=size_wall)
+        p_lower = [model.add_point(rotate(x_phys[i], y_lo[i]), mesh_size=sizes[1])
                    for i in range(1, n_pts - 1)]
 
         # dorso: LE -> TE ; ventre: TE -> LE
@@ -382,19 +383,53 @@ def generate_mesh_naca(L, H, a, chord=1.0, alpha=0.0, c_r=(0.0, 0.0),
         model.synchronize()
 
         # --- raffinamento attorno al profilo ---
+        # Distanza dal profilo alare
         f_dist = gmsh.model.mesh.field.add("Distance")
         gmsh.model.mesh.field.setNumbers(
-            f_dist, "CurvesList", [l.dim_tag[1] for l in wing_lines])
+            f_dist, "CurvesList", [l.dim_tag[1] for l in wing_lines]
+        )
         gmsh.model.mesh.field.setNumber(f_dist, "Sampling", 200)
 
-        f_thr = gmsh.model.mesh.field.add("Threshold")
-        gmsh.model.mesh.field.setNumber(f_thr, "InField", f_dist)
-        gmsh.model.mesh.field.setNumber(f_thr, "SizeMin", size_wall)
-        gmsh.model.mesh.field.setNumber(f_thr, "SizeMax", size_far)
-        gmsh.model.mesh.field.setNumber(f_thr, "DistMin", 0.0)
-        gmsh.model.mesh.field.setNumber(f_thr, "DistMax", dist_max)
 
-        gmsh.model.mesh.field.setAsBackgroundMesh(f_thr)
+        # Prima fascia: da 0 a d1
+        f_thr1 = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(f_thr1, "InField", f_dist)
+        gmsh.model.mesh.field.setNumber(f_thr1, "SizeMin", sizes[0])
+        gmsh.model.mesh.field.setNumber(f_thr1, "SizeMax", sizes[1])
+        gmsh.model.mesh.field.setNumber(f_thr1, "DistMin", 0.0)
+        gmsh.model.mesh.field.setNumber(f_thr1, "DistMax", dists[0])
+        gmsh.model.mesh.field.setNumber(f_thr1, "StopAtDistMax", 1)
+
+
+        # Seconda fascia: da d1 a d2
+        f_thr2 = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(f_thr2, "InField", f_dist)
+        gmsh.model.mesh.field.setNumber(f_thr2, "SizeMin", sizes[1])
+        gmsh.model.mesh.field.setNumber(f_thr2, "SizeMax", sizes[2])
+        gmsh.model.mesh.field.setNumber(f_thr2, "DistMin", dists[0])
+        gmsh.model.mesh.field.setNumber(f_thr2, "DistMax", dists[1])
+
+
+        # Combinazione: prende la dimensione minima
+        f_min = gmsh.model.mesh.field.add("Min")
+        gmsh.model.mesh.field.setNumbers(
+            f_min, "FieldsList", [f_thr1, f_thr2]
+        )
+
+        gmsh.model.mesh.field.setAsBackgroundMesh(f_min)
+        # f_dist = gmsh.model.mesh.field.add("Distance")
+        # gmsh.model.mesh.field.setNumbers(
+        #     f_dist, "CurvesList", [l.dim_tag[1] for l in wing_lines])
+        # gmsh.model.mesh.field.setNumber(f_dist, "Sampling", 200)
+
+        # f_thr = gmsh.model.mesh.field.add("Threshold")
+        # gmsh.model.mesh.field.setNumber(f_thr, "InField", f_dist)
+        # gmsh.model.mesh.field.setNumber(f_thr, "SizeMin", size_wall)
+        # gmsh.model.mesh.field.setNumber(f_thr, "SizeMax", size_far)
+        # gmsh.model.mesh.field.setNumber(f_thr, "DistMin", 0.0)
+        # gmsh.model.mesh.field.setNumber(f_thr, "DistMax", dist_max)
+
+        # gmsh.model.mesh.field.setAsBackgroundMesh(f_thr)
 
         # la dimensione è governata solo dal campo
         gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
@@ -434,18 +469,365 @@ def generate_mesh_naca(L, H, a, chord=1.0, alpha=0.0, c_r=(0.0, 0.0),
                     cell_data={"f": [line_tags]}),
     )
 
+
+def generate_mesh_circular_naca(
+    R,
+    N2,
+    chord=1.0,
+    alpha=0.0,
+    c_r=(0.0, 0.0),
+    t=0.12,
+    n_pts=100,
+    sizes=(0.01, 0.3, 0.5),
+    dists=(1.0, 2.0),
+    mesh_file="wing.msh",
+):
+    """
+    Mesh 2D con dominio circolare esterno e profilo NACA00xx interno.
+
+    R       : raggio del dominio circolare
+    N2      : numero di segmenti del bordo circolare
+    chord   : corda del profilo
+    alpha   : angolo di rotazione [rad]
+    c_r     : centro della corda
+    t       : spessore relativo NACA (0.12 = NACA0012)
+    n_pts   : punti per ciascuna superficie del profilo
+    sizes   : [size_wall, size_intermediate, size_far]
+    dists   : [distanza prima fascia, distanza seconda fascia]
+    """
+
+    assert R > chord / 2, "Il profilo deve stare dentro il cerchio"
+    assert N2 >= 8
+    assert len(sizes) == 3
+    assert len(dists) == 2
+    assert 0 < dists[0] < dists[1]
+
+    # ----------------------------------------------------------
+    # Rotazione attorno al centro della corda
+    # ----------------------------------------------------------
+
+    def rotate(x, y):
+        dx = x - c_r[0]
+        dy = y - c_r[1]
+
+        xr = c_r[0] + np.cos(alpha)*dx - np.sin(alpha)*dy
+        yr = c_r[1] + np.sin(alpha)*dx + np.cos(alpha)*dy
+
+        return (xr, yr, 0.0)
+
+    # ----------------------------------------------------------
+    # Parametri mesh
+    # ----------------------------------------------------------
+
+    eps_wall = sizes[0]
+    eps_intermediate = sizes[1]
+    eps_far = sizes[2]
+
+    # ----------------------------------------------------------
+    # Geometria NACA00xx
+    # ----------------------------------------------------------
+
+    beta = np.linspace(0, np.pi, n_pts)
+    xs = 0.5 * (1 - np.cos(beta))
+
+    yt = naca00xx_half_thickness(xs, t)
+
+    x_phys = c_r[0] + chord * (xs - 0.5)
+
+    y_up = c_r[1] + chord * yt
+    y_lo = c_r[1] - chord * yt
+
+    # ----------------------------------------------------------
+    # Inizializzazione geometria
+    # ----------------------------------------------------------
+
+    with pygmsh.geo.Geometry() as model:
+
+        # ======================================================
+        # 1. DOMINIO CIRCOLARE ESTERNO
+        # ======================================================
+
+        circle_points = [
+            model.add_point(
+                (
+                    c_r[0] + R*np.cos(2*np.pi*i/N2),
+                    c_r[1] + R*np.sin(2*np.pi*i/N2),
+                    0.0
+                ),
+                mesh_size=eps_far
+            )
+            for i in range(N2)
+        ]
+
+        circle_lines = [
+            model.add_line(
+                circle_points[i],
+                circle_points[(i+1) % N2]
+            )
+            for i in range(N2)
+        ]
+
+        # ======================================================
+        # 2. PROFILO NACA
+        # ======================================================
+
+        p_le = model.add_point(
+            rotate(x_phys[0], c_r[1]),
+            mesh_size=eps_wall
+        )
+
+        p_te = model.add_point(
+            rotate(x_phys[-1], c_r[1]),
+            mesh_size=eps_wall
+        )
+
+        p_upper = [
+            model.add_point(
+                rotate(x_phys[i], y_up[i]),
+                mesh_size=eps_wall
+            )
+            for i in range(1, n_pts-1)
+        ]
+
+        p_lower = [
+            model.add_point(
+                rotate(x_phys[i], y_lo[i]),
+                mesh_size=eps_wall
+            )
+            for i in range(1, n_pts-1)
+        ]
+
+        # Dorso: LE -> TE
+        spline_up = model.add_spline(
+            [p_le] + p_upper + [p_te]
+        )
+
+        # Ventre: TE -> LE
+        spline_lo = model.add_spline(
+            [p_te] + p_lower[::-1] + [p_le]
+        )
+
+        wing_lines = [spline_up, spline_lo]
+
+        # ======================================================
+        # 3. SUPERFICIE FLUIDA CON BUCO
+        # ======================================================
+
+        circle_loop = model.add_curve_loop(circle_lines)
+
+        wing_loop = model.add_curve_loop(wing_lines)
+
+        surface = model.add_plane_surface(
+            circle_loop,
+            holes=[wing_loop]
+        )
+
+        model.synchronize()
+
+        # ======================================================
+        # 4. RAFFINAMENTO ATTORNO AL PROFILO
+        # ======================================================
+
+        f_dist = gmsh.model.mesh.field.add("Distance")
+
+        gmsh.model.mesh.field.setNumbers(
+            f_dist,
+            "CurvesList",
+            [l.dim_tag[1] for l in wing_lines]
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_dist,
+            "Sampling",
+            200
+        )
+
+        # ------------------------------------------------------
+        # Prima fascia: parete -> d1
+        # ------------------------------------------------------
+
+        f_thr1 = gmsh.model.mesh.field.add("Threshold")
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr1, "InField", f_dist
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr1, "SizeMin", eps_wall
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr1, "SizeMax", eps_intermediate
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr1, "DistMin", 0.0
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr1, "DistMax", dists[0]
+        )
+
+        # ------------------------------------------------------
+        # Seconda fascia: d1 -> d2
+        # ------------------------------------------------------
+
+        f_thr2 = gmsh.model.mesh.field.add("Threshold")
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr2, "InField", f_dist
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr2, "SizeMin", eps_intermediate
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr2, "SizeMax", eps_far
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr2, "DistMin", dists[0]
+        )
+
+        gmsh.model.mesh.field.setNumber(
+            f_thr2, "DistMax", dists[1]
+        )
+
+        # ------------------------------------------------------
+        # Campo finale
+        # ------------------------------------------------------
+
+        f_min = gmsh.model.mesh.field.add("Min")
+
+        gmsh.model.mesh.field.setNumbers(
+            f_min,
+            "FieldsList",
+            [f_thr1, f_thr2]
+        )
+
+        gmsh.model.mesh.field.setAsBackgroundMesh(f_min)
+
+        # La dimensione è governata dai campi
+        gmsh.option.setNumber(
+            "Mesh.MeshSizeFromPoints", 0
+        )
+
+        gmsh.option.setNumber(
+            "Mesh.MeshSizeFromCurvature", 0
+        )
+
+        gmsh.option.setNumber(
+            "Mesh.MeshSizeExtendFromBoundary", 0
+        )
+
+        # ======================================================
+        # 5. PHYSICAL GROUPS
+        # ======================================================
+
+        gmsh.model.addPhysicalGroup(
+            2, [surface.dim_tag[1]], tag=1
+        )
+
+        gmsh.model.setPhysicalName(
+            2, 1, "Volume"
+        )
+
+        gmsh.model.addPhysicalGroup(
+            1,
+            [l.dim_tag[1] for l in circle_lines],
+            tag=2
+        )
+
+        gmsh.model.setPhysicalName(
+            1, 2, "ExternalBoundary"
+        )
+
+        gmsh.model.addPhysicalGroup(
+            1,
+            [l.dim_tag[1] for l in wing_lines],
+            tag=3
+        )
+
+        gmsh.model.setPhysicalName(
+            1, 3, "Wing"
+        )
+
+        # ======================================================
+        # 6. GENERAZIONE MESH
+        # ======================================================
+
+        model.generate_mesh(dim=2)
+
+        gmsh.write(mesh_file)
+
+    # ==========================================================
+    # 7. CONVERSIONE IN XDMF
+    # ==========================================================
+
+    mesh = meshio.read(mesh_file)
+
+    triangle = mesh.cells_dict["triangle"]
+    line = mesh.cells_dict["line"]
+
+    triangle_tags = mesh.cell_data_dict[
+        "gmsh:physical"
+    ]["triangle"]
+
+    line_tags = mesh.cell_data_dict[
+        "gmsh:physical"
+    ]["line"]
+
+    meshio.write(
+        "mesh.xdmf",
+        meshio.Mesh(
+            points=mesh.points,
+            cells=[("triangle", triangle)],
+            cell_data={
+                "name_to_read": [triangle_tags]
+            }
+        )
+    )
+
+    meshio.write(
+        "mf.xdmf",
+        meshio.Mesh(
+            points=mesh.points,
+            cells=[("line", line)],
+            cell_data={
+                "f": [line_tags]
+            }
+        )
+    )
+
+    print("Mesh circolare NACA generata correttamente!")
+
+
+
 if __name__ == "__main__":
-    L = 6.0
-    H = 4.0
-    r_x = 0.5
-    r_y = 0.02
-    c_r = (0, 0)
-    N2 = 100
-    alpha = np.pi
+
+    R = 3.0
+    chord = 1.0
+
+    c_r = (0.0, 0.0)
+
+    N2 = 200
+    alpha = np.pi 
+
     resolution = 0.01
-    N = int(4 *r_x/resolution)
 
     #generate_mesh_circular(L, r_x, r_y, N, N2, alpha, c_r, resolution)
-    generate_mesh_naca(L, H, a=0.5, chord=2*r_x, alpha=alpha, c_r=c_r)
-
+    #generate_mesh_naca(L, H, a=0.5, chord=2*r_x, alpha=alpha, sizes=[0.01, 0.3, 0.5], dists=[1, 2], c_r=c_r)
+    generate_mesh_circular_naca(
+        R=R,
+        N2=N2,
+        chord=chord,
+        alpha=alpha,
+        c_r=c_r,
+        t=0.12,
+        n_pts=120,
+        sizes=[resolution, 0.3, 0.5],
+        dists=[1.0, 2.0],
+        mesh_file="wing.msh"
+    )
 
